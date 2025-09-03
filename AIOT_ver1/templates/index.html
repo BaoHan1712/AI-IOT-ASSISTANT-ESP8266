@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speech Recognition Dashboard</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .glass {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-gray-200 min-h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="w-20 bg-gray-950 flex flex-col items-center py-6 space-y-6">
+    <div class="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-lg">A</div>
+    <button class="w-10 h-10 bg-gray-800 rounded-lg hover:bg-indigo-600"></button>
+    <button class="w-10 h-10 bg-gray-800 rounded-lg hover:bg-green-600"></button>
+    <button class="w-10 h-10 bg-gray-800 rounded-lg hover:bg-pink-600"></button>
+    <button class="w-10 h-10 bg-gray-800 rounded-lg hover:bg-yellow-600"></button>
+  </aside>
+
+  <!-- Main content -->
+  <main class="flex-1 p-10 space-y-8">
+
+    <!-- Title -->
+    <div class="glass rounded-2xl p-6 shadow-lg text-center">
+      <h1 class="text-3xl font-bold text-white drop-shadow-lg">SERVER PROCESSING AIOT</h1>
+    </div>
+
+    <!-- Grid Cards -->
+    <section class="grid grid-cols-2 lg:grid-cols-3 gap-6">
+      
+      <!-- Tổng số từ -->
+      <div class="glass rounded-2xl p-6 shadow-lg">
+        <h3 class="text-sm text-gray-400">Tổng số từ nhận diện</h3>
+        <p class="text-2xl font-bold mt-2">12,430</p>
+        <p class="text-green-400 text-sm">+320 hôm nay</p>
+      </div>
+
+      <!-- Tổng số file -->
+      <div class="glass rounded-2xl p-6 shadow-lg">
+        <h3 class="text-sm text-gray-400">Tổng số file xử lý</h3>
+        <p class="text-2xl font-bold mt-2">58</p>
+        <p class="text-yellow-400 text-sm">+3 tuần này</p>
+      </div>
+
+      <!-- Thời lượng âm thanh -->
+      <div class="glass rounded-2xl p-6 shadow-lg">
+        <h3 class="text-sm text-gray-400">Tổng thời lượng âm thanh</h3>
+        <p class="text-2xl font-bold mt-2">6 giờ 45 phút</p>
+        <p class="text-blue-400 text-sm">+1h hôm nay</p>
+      </div>
+    </section>
+
+    <!-- Biểu đồ -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      
+      <!-- Biểu đồ tròn -->
+      <div class="glass rounded-2xl p-6 shadow-lg">
+        <h2 class="text-lg font-semibold mb-4">Ngôn ngữ sử dụng</h2>
+        <canvas id="pieChart"></canvas>
+      </div>
+
+      <!-- Biểu đồ cột -->
+      <div class="glass rounded-2xl p-6 shadow-lg">
+        <h2 class="text-lg font-semibold mb-4">Số từ theo ngày</h2>
+        <canvas id="barChart"></canvas>
+      </div>
+    </section>
+
+    <!-- Result -->
+    <section class="glass rounded-2xl p-6 shadow-lg">
+      <h2 class="text-lg font-semibold mb-4">Kết quả nhận diện</h2>
+      <div id="resultText" class="p-4 bg-gray-800 rounded-lg text-gray-100 min-h-[100px]">
+        (Chưa có dữ liệu)
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // Biểu đồ tròn
+    const pieCtx = document.getElementById("pieChart").getContext("2d");
+    new Chart(pieCtx, {
+      type: "pie",
+      data: {
+        labels: ["Tiếng Việt", "English", "Khác"],
+        datasets: [{
+          data: [65, 25, 10],
+          backgroundColor: ["#6366F1", "#22C55E", "#F43F5E"]
+        }]
+      }
+    });
+
+    // Biểu đồ cột
+    const barCtx = document.getElementById("barChart").getContext("2d");
+    new Chart(barCtx, {
+      type: "bar",
+      data: {
+        labels: ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6"],
+        datasets: [{
+          label: "Số từ",
+          data: [1200, 900, 1500, 800, 2000],
+          backgroundColor: "#3B82F6"
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } }
+      }
+    });
+  </script>
+</body>
+</html>
