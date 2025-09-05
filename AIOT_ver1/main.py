@@ -1,57 +1,99 @@
 # app.py
-from fastapi import FastAPI, File, UploadFile, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-import shutil
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from faster_whisper import WhisperModel
+import subprocess
 import os
 import uvicorn
-from faster_whisper import WhisperModel  # <-- mô hình ASR
+import socket
+import threading
 
 app = FastAPI()
 
-# Cấu hình thư mục
+# ===== Cấu hình thư mục =====
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+VIDEO_DIR = os.path.join(BASE_DIR, "temp_video")
+os.makedirs(VIDEO_DIR, exist_ok=True)
 
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(STATIC_DIR, exist_ok=True)
-
-# Mount thư mục static để load CSS/JS/img
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# Load template Jinja2
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-
-# Load mô hình Whisper (base cho tiếng Việt, có thể đổi sang "small", "medium")
+# Load Whisper
 model = WhisperModel("base", device="cpu", compute_type="int8")
 
+# ===== Hàm trích xuất audio từ video =====
+def extract_audio(video_path: str, audio_path: str):
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", video_path,
+        "-vn",
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        audio_path
+    ]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-# Trang chính (render HTML)
-@app.get("/", response_class=HTMLResponse)
-async def main(request: Request, msg: str = None):
-    return templates.TemplateResponse("index.html", {"request": request, "msg": msg})
-
-
-# API Upload cho frontend (trả JSON text nhận diện)
+# ===== Luồng nhận video và trả ngay "ok" =====
 @app.post("/api/upload", response_class=JSONResponse)
-async def upload_api(file: UploadFile = File(...)):
+async def upload_video(request: Request):
     try:
-        # Lưu file
-        save_path = os.path.join(UPLOAD_DIR, file.filename)
-        with open(save_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        data = await request.body()
+        video_filename = "video_received.mp4"
+        video_path = os.path.join(VIDEO_DIR, video_filename)
 
-        # Nhận diện giọng nói
-        segments, info = model.transcribe(save_path, beam_size=5, language="vi")
-        text = " ".join([segment.text for segment in segments])
+        # Lưu file video
+        with open(video_path, "wb") as f:
+            f.write(data)
 
-        return {"status": "success", "filename": file.filename, "text": text}
+        # Trả ngay cho ESP32
+        return {"status": "success", "text": "ok"}
+
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# ===== Luồng xử lý file video thành text =====
+def process_video_to_text(video_path: str):
+    try:
+        audio_filename = "audio_extracted.wav"
+        audio_path = os.path.join(VIDEO_DIR, audio_filename)
+
+        extract_audio(video_path, audio_path)
+
+        segments, info = model.transcribe(audio_path, beam_size=5, language="vi")
+        text = " ".join([segment.text for segment in segments])
+        print("Transcription:", text)
+    except Exception as e:
+        print("Error in transcription:", str(e))
+
+# ===== Hàm kiểm tra video mới =====
+def video_watcher():
+    last_mtime = 0
+    video_path = os.path.join(VIDEO_DIR, "video_received.mp4")
+    while True:
+        if os.path.exists(video_path):
+            mtime = os.path.getmtime(video_path)
+            if mtime != last_mtime:
+                last_mtime = mtime
+                # Tạo luồng xử lý text
+                threading.Thread(target=process_video_to_text, args=(video_path,)).start()
+
+import time
+def start_watcher():
+    threading.Thread(target=video_watcher, daemon=True).start()
+
+# ===== Lấy IP LAN =====
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=9000)
+    start_watcher()
+    local_ip = get_local_ip()
+    print(f"Starting server on LAN IP: {local_ip}")
+    uvicorn.run(app, host=local_ip, port=9000)
