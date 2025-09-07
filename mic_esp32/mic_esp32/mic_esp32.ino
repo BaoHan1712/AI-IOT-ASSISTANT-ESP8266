@@ -19,6 +19,9 @@ void i2s_adc_data_scale(uint8_t * d_buff, uint8_t* s_buff, uint32_t len);
 #define I2S_SCK  33  
 #define BUTTON_PIN 15
 #define LED_PIN    5
+#define LED_PIN_2   2
+#define LED_PIN_3    4
+
 
 #define I2S_PORT I2S_NUM_0
 #define I2S_SAMPLE_RATE   (16000)
@@ -27,6 +30,10 @@ void i2s_adc_data_scale(uint8_t * d_buff, uint8_t* s_buff, uint32_t len);
 #define RECORD_TIME       (6) //Seconds
 #define I2S_CHANNEL_NUM   (1)
 #define FLASH_RECORD_SIZE (I2S_CHANNEL_NUM * I2S_SAMPLE_RATE * I2S_SAMPLE_BITS / 8 * RECORD_TIME)
+
+// TCP server để lắng nghe gói tin điều khiển
+WiFiServer controlServer(8080);
+TaskHandle_t controlTaskHandle = NULL;
 
 File file;
 const char filename[] = "/recording.wav";
@@ -50,14 +57,26 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
+  pinMode(LED_PIN_2, OUTPUT);
+  digitalWrite(LED_PIN_2, LOW);
+  pinMode(LED_PIN_3, OUTPUT);
+  digitalWrite(LED_PIN_3, LOW);
+
   // Kết nối WiFi
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+    delay(500);  // quan trọng: tránh reset watchdog
     Serial.print(".");
   }
   Serial.println("\nWiFi connected. IP: " + WiFi.localIP().toString());
+
+  // Sau khi WiFi OK mới khởi động server TCP
+  controlServer.begin();
+  Serial.println("Control server started on port 8080");
+
+  // Tạo task để lắng nghe dữ liệu
+  xTaskCreatePinnedToCore(controlTask, "controlTask", 4096, NULL, 0, &controlTaskHandle, 0);
 
   // SPIFFS và I2S
   if(!SPIFFS.begin(true)){
@@ -67,6 +86,7 @@ void setup() {
   i2sInit();
   listSPIFFS();
 }
+
 
 void loop() {
   bool buttonState = digitalRead(BUTTON_PIN);
@@ -88,6 +108,55 @@ void loop() {
   lastButtonState = buttonState;
   delay(10); // debounce đơn giản
 }
+
+void controlTask(void *pvParameters) {
+  while (true) {
+    WiFiClient client = controlServer.available();
+    if (client) {
+      Serial.println("Control client connected");
+      while (client.connected()) {
+        if (client.available() >= 3) {
+          uint8_t startByte = client.read();
+          uint8_t dataByte  = client.read();
+          uint8_t endByte   = client.read();
+
+          Serial.printf("Recv: 0x%02X 0x%02X 0x%02X\n", startByte, dataByte, endByte);
+
+          if (startByte == 0x02 && endByte == 0x03) {
+            if (dataByte == '1') {
+              digitalWrite(LED_PIN, HIGH);
+              Serial.println("LED RED ON");
+            } else if (dataByte == '0') {
+              digitalWrite(LED_PIN, LOW);
+              Serial.println("LED RED OFF");
+            }
+            else if (dataByte == '3') {
+              digitalWrite(LED_PIN_2, HIGH);
+              Serial.println("LED yellow ON");
+            }
+            else if (dataByte == '4') {
+              digitalWrite(LED_PIN_2, LOW);
+              Serial.println("LED yellow OFF");
+            }
+            else if (dataByte == '5') {
+              digitalWrite(LED_PIN_3, HIGH);
+              Serial.println("LED blue ON");
+            }
+            else if (dataByte == '6') {
+              digitalWrite(LED_PIN_3, LOW);
+              Serial.println("LED blue OFF");
+            }
+          }
+        }
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+      }
+      client.stop();
+      Serial.println("Control client disconnected");
+    }
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+  }
+}
+
 
 // ===== Mở file WAV =====
 void startRecording() {
